@@ -16,17 +16,16 @@ const outputSchema = z.object({
   isEvent: z.boolean().describe('Whether the message is about an actual event, workshop, or class'),
   title: z.string().nullable().describe('The event title exactly as written in the message'),
   description: z.string().nullable().describe('The event description/details exactly as they appear in the message'),
-  category: z.enum(['workshop', 'meetup', 'class', 'concert', 'conference', 'sports', 'exhibition', 'festival', 'other']).nullable(),
+  category: z.enum(['workshop', 'class', 'event']).nullable(),
   placeName: z.string().nullable().describe('Name of the venue or place'),
   location: z.string().nullable().describe('Full address or area/city'),
   locationLink: z.string().nullable().describe('Google Maps or any location URL if mentioned'),
   contactNo: z.string().nullable().describe('Phone number or WhatsApp number for inquiries'),
   paymentType: z.enum(['paid', 'free', 'contribution']).nullable(),
-  paymentAmount: z.string().nullable().describe('Amount with currency, e.g. "₹500", "Rs. 200"'),
+  paymentAmount: z.string().nullable().describe('Payment details exactly as mentioned, e.g. "Rs 500 for guests, Rs 200 for Aurovilians"'),
   startTime: z.string().nullable().describe('Start time in HH:mm (24h) format'),
   endTime: z.string().nullable().describe('End time in HH:mm (24h) format, if mentioned'),
   date: z.string().nullable().describe('Event date in YYYY-MM-DD format'),
-  registrationLink: z.string().nullable().describe('Registration or booking URL if mentioned'),
 });
 
 export type EventInfo = z.infer<typeof outputSchema>;
@@ -45,7 +44,8 @@ EXTRACTION RULES:
 - date: YYYY-MM-DD format. Convert relative dates ("this Saturday", "tomorrow") using today's date. If no date is mentioned, use today's date.
 - time: 24-hour HH:mm format. "morning" = 09:00, "evening" = 18:00.
 - paymentType: "free" if explicitly free, "paid" if an amount is given, "contribution" if voluntary/donation-based. null if not mentioned.
-- locationLink/registrationLink: Only extract if actual URLs are present.
+- paymentAmount: Extract the full payment details exactly as written, including different rates if mentioned (e.g. "Rs 500 for guests, Rs 200 for Aurovilians").
+- locationLink: Only extract if an actual URL is present.
 - contactNo: Extract phone numbers mentioned for contact/registration.`;
 
 function buildUserPrompt(message: string): string {
