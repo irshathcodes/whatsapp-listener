@@ -1,8 +1,10 @@
 import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers } from 'baileys';
 import qrcode from 'qrcode-terminal';
 import pino from 'pino';
+import { unlink } from 'fs/promises';
 import { getStructuredMessage } from './message-utils.js';
 import { generateEventInfo } from './event-utils.js';
+import { uploadMedia, storeEvent, type StoredEvent } from './r2-utils.js';
 
 // ── Config ──────────────────────────────────────────────────────────
 // Add JIDs to listen to (group or individual). Empty = listen to all.
@@ -109,7 +111,39 @@ async function startListener() {
           console.log('\n✓ Event detected:');
           console.log(JSON.stringify(eventInfo, null, 2));
 
-          // TODO: send `eventInfo` to your server/API
+          // Upload media to R2 and get public URLs
+          let imageUrl: string | null = null;
+          let videoUrl: string | null = null;
+
+          if (structuredMessage.imageUrl) {
+            try {
+              imageUrl = await uploadMedia(structuredMessage.imageUrl);
+              console.log(`  ↳ Image uploaded: ${imageUrl}`);
+            } catch (err: any) {
+              console.error(`  ↳ Image upload failed: ${err.message}`);
+            } finally {
+              await unlink(structuredMessage.imageUrl).catch(() => {});
+            }
+          }
+
+          if (structuredMessage.videoUrl) {
+            try {
+              videoUrl = await uploadMedia(structuredMessage.videoUrl);
+              console.log(`  ↳ Video uploaded: ${videoUrl}`);
+            } catch (err: any) {
+              console.error(`  ↳ Video upload failed: ${err.message}`);
+            } finally {
+              await unlink(structuredMessage.videoUrl).catch(() => {});
+            }
+          }
+
+          // Store event with media URLs in weekly JSON
+          const storedEvent: StoredEvent = { ...eventInfo, imageUrl, videoUrl };
+          try {
+            await storeEvent(storedEvent);
+          } catch (err: any) {
+            console.error(`  ↳ Failed to store event in R2: ${err.message}`);
+          }
         } else {
           console.log('  ↳ Not an event, skipping.');
         }
