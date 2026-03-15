@@ -3,3 +3,4 @@ node_modules
 .DS_Store
 downloaded_media
 auth_state
+dist

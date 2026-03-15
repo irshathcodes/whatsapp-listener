@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx", // Makes the override keyword actually useful in classes.
+    "lib": [
+      "es2022"
+    ], // This option forces you to use import type and export type, leading to more predictable behavior and fewer unnecessary imports. With module: NodeNext, it also enforces you're using the correct import syntax for ESM or CJS.
+    "moduleDetection": "force", // Modern JavaScript features
+    "module": "NodeNext", // Node JS ES module support
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "types": [
+      "node"
+    ],
+    "allowJs": true, // Node JS resolution strategy
+    "strict": true, // Interoperability between CommonJS and ES modules
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "outDir": "dist",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true, // Include JSON modules
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "exclude": [
+    "node_modules"
+  ]
+}
