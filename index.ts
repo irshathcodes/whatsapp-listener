@@ -2,6 +2,7 @@ import makeWASocket, { useMultiFileAuthState, DisconnectReason, Browsers } from 
 import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import { getStructuredMessage } from './message-utils.js';
+import { generateEventInfo } from './event-utils.js';
 
 // ── Config ──────────────────────────────────────────────────────────
 // Add JIDs to listen to (group or individual). Empty = listen to all.
@@ -11,6 +12,8 @@ const AUTH_DIR = './auth_state';
 
 
 let activeSock: ReturnType<typeof makeWASocket> | null = null;
+let reconnectAttempt = 0;
+const MAX_RECONNECT_DELAY = 120_000; // 2 minutes
 
 function gracefulShutdown(signal: any) {
   console.log(`\n${signal} received. Closing WhatsApp connection...`);
@@ -46,6 +49,7 @@ async function startListener() {
     }
 
     if (connection === 'open') {
+      reconnectAttempt = 0;
       console.log('\n✓ Connected to WhatsApp\n');
       if (LISTEN_JIDS.length === 0) {
         console.log('LISTEN_JIDS is empty — listening to ALL chats.');
@@ -57,7 +61,8 @@ async function startListener() {
 
     if (connection === 'close') {
       const statusCode = (lastDisconnect?.error as Record<string, any>)?.output?.statusCode;
-      console.log(`Connection closed. Status: ${statusCode}`);
+      console.log(`Connection closed`);
+      console.log('error: ', JSON.stringify(lastDisconnect, null, 2));
 
       if (statusCode === DisconnectReason.loggedOut) {
         console.log('Logged out. Delete the auth_state folder and re-run.');
@@ -70,8 +75,10 @@ async function startListener() {
         return;
       }
 
-      console.log('Reconnecting in 5s...');
-      setTimeout(() => startListener(), 5000);
+      const delay = Math.min(10_000 * Math.pow(2, reconnectAttempt), MAX_RECONNECT_DELAY);
+      reconnectAttempt++;
+      console.log(`Reconnecting in ${(delay / 1000).toFixed(0)}s... (attempt ${reconnectAttempt})`);
+      setTimeout(() => startListener(), delay);
     }
   });
 
@@ -92,7 +99,23 @@ async function startListener() {
 
       if (!structuredMessage) continue;
 
-      // TODO: send `structured` to your processing pipeline
+      console.log(JSON.stringify(structuredMessage, null, 2));
+
+      // Extract event info via LLM
+      try {
+        const eventInfo = await generateEventInfo(structuredMessage);
+
+        if (eventInfo) {
+          console.log('\n✓ Event detected:');
+          console.log(JSON.stringify(eventInfo, null, 2));
+
+          // TODO: send `eventInfo` to your server/API
+        } else {
+          console.log('  ↳ Not an event, skipping.');
+        }
+      } catch (err: any) {
+        console.error(`  ↳ LLM extraction failed: ${err.message}`);
+      }
     }
   });
 }
