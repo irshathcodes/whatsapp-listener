@@ -1,16 +1,8 @@
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { generateText, Output } from 'ai';
 import z from 'zod';
 import { type StructuredMessage } from './message-utils.js';
 import { openai } from '@ai-sdk/openai';
-
-const nim = createOpenAICompatible({
-  name: 'nim',
-  baseURL: 'https://integrate.api.nvidia.com/v1',
-  headers: {
-    Authorization: `Bearer ${process.env.NIM_API_KEY}`,
-  },
-});
+import { getTodayIST } from './r2-utils.js';
 
 const outputSchema = z.object({
   isEvent: z.boolean().describe('Whether the message is about an actual event, workshop, or class'),
@@ -49,7 +41,7 @@ EXTRACTION RULES:
 - contactNo: Extract phone numbers mentioned for contact/registration.`;
 
 function buildUserPrompt(message: string): string {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayIST();
   return `Today's date: ${today}\n\nMessage:\n"""\n${message}\n"""`;
 }
 

@@ -18,6 +18,7 @@ const PUBLIC_URL = process.env.R2_PUBLIC_URL!; // e.g. https://pub-xxx.r2.dev
 
 // ── Types ────────────────────────────────────────────────────────────
 export interface StoredEvent extends EventInfo {
+  message: string;
   imageUrl: string | null;
   videoUrl: string | null;
 }
@@ -44,26 +45,22 @@ export async function uploadMedia(localPath: string): Promise<string> {
     Key: key,
     Body: body,
     ContentType: contentType,
+    CacheControl: 'public, max-age=31536000, immutable',
   }));
 
   return `${PUBLIC_URL}/${key}`;
 }
 
-// ── Weekly event storage ─────────────────────────────────────────────
-function getISOWeekKey(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
-  const dayOfWeek = date.getDay() || 7; // Make Sunday = 7
-  date.setDate(date.getDate() + 4 - dayOfWeek); // Move to Thursday of the week
-  const yearStart = new Date(date.getFullYear(), 0, 1);
-  const weekNum = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return `${date.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+// ── Daily event storage ──────────────────────────────────────────────
+export function getTodayIST(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 }
 
-async function getWeeklyEvents(weekKey: string): Promise<StoredEvent[]> {
+async function getDailyEvents(dateKey: string): Promise<StoredEvent[]> {
   try {
     const resp = await s3.send(new GetObjectCommand({
       Bucket: BUCKET,
-      Key: `events/${weekKey}.json`,
+      Key: `events/${dateKey}.json`,
     }));
     const body = await resp.Body?.transformToString();
     return body ? JSON.parse(body) : [];
@@ -72,17 +69,30 @@ async function getWeeklyEvents(weekKey: string): Promise<StoredEvent[]> {
   }
 }
 
-export async function storeEvent(event: StoredEvent): Promise<void> {
-  const weekKey = getISOWeekKey(event.date ?? new Date().toISOString().split('T')[0]!);
-  const events = await getWeeklyEvents(weekKey);
+function normalize(text: string): string {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export async function isDuplicate(message: string, date: string | null): Promise<boolean> {
+  const dateKey = date ?? getTodayIST();
+  const events = await getDailyEvents(dateKey);
+  return events.some(e => normalize(e.message) === normalize(message));
+}
+
+export async function storeEvent(event: StoredEvent): Promise<boolean> {
+  const dateKey = event.date ?? getTodayIST();
+  const events = await getDailyEvents(dateKey);
+
   events.push(event);
 
   await s3.send(new PutObjectCommand({
     Bucket: BUCKET,
-    Key: `events/${weekKey}.json`,
+    Key: `events/${dateKey}.json`,
     Body: JSON.stringify(events, null, 2),
     ContentType: 'application/json',
+    CacheControl: 'public, max-age=300',
   }));
 
-  console.log(`  ↳ Stored event in events/${weekKey}.json (${events.length} events total)`);
+  console.log(`  ↳ Stored event in events/${dateKey}.json (${events.length} events total)`);
+  return true;
 }

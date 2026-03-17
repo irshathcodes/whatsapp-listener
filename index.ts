@@ -4,7 +4,7 @@ import pino from 'pino';
 import { unlink } from 'fs/promises';
 import { getStructuredMessage } from './message-utils.js';
 import { generateEventInfo } from './event-utils.js';
-import { uploadMedia, storeEvent, type StoredEvent } from './r2-utils.js';
+import { uploadMedia, storeEvent, isDuplicate, type StoredEvent } from './r2-utils.js';
 
 // ── Config ──────────────────────────────────────────────────────────
 // Add JIDs to listen to (group or individual). Empty = listen to all.
@@ -55,7 +55,6 @@ async function startListener() {
       console.log('\n✓ Connected to WhatsApp\n');
       if (LISTEN_JIDS.length === 0) {
         console.log('LISTEN_JIDS is empty — listening to ALL chats.');
-        console.log('JIDs will be printed with each message so you can pick ones to filter.\n');
       } else {
         console.log(`Listening to ${LISTEN_JIDS.length} chat(s):\n${LISTEN_JIDS.map(j => `  - ${j}`).join('\n')}\n`);
       }
@@ -94,6 +93,8 @@ async function startListener() {
     for (const msg of messages) {
       const remoteJid = msg.key.remoteJid;
 
+      console.log('JID: ', remoteJid);
+
       // Filter by LISTEN_JIDS if configured
       if (LISTEN_JIDS.length > 0 && remoteJid && !LISTEN_JIDS.includes(remoteJid)) continue;
 
@@ -111,38 +112,45 @@ async function startListener() {
           console.log('\n✓ Event detected:');
           console.log(JSON.stringify(eventInfo, null, 2));
 
-          // Upload media to R2 and get public URLs
-          let imageUrl: string | null = null;
-          let videoUrl: string | null = null;
+          // Check for duplicates before uploading media
+          if (await isDuplicate(structuredMessage.message!, eventInfo.date)) {
+            console.log('  ↳ Duplicate event, skipping.');
+            if (structuredMessage.imageUrl) await unlink(structuredMessage.imageUrl).catch(() => { });
+            if (structuredMessage.videoUrl) await unlink(structuredMessage.videoUrl).catch(() => { });
+          } else {
+            // Upload media to R2 and get public URLs
+            let imageUrl: string | null = null;
+            let videoUrl: string | null = null;
 
-          if (structuredMessage.imageUrl) {
-            try {
-              imageUrl = await uploadMedia(structuredMessage.imageUrl);
-              console.log(`  ↳ Image uploaded: ${imageUrl}`);
-            } catch (err: any) {
-              console.error(`  ↳ Image upload failed: ${err.message}`);
-            } finally {
-              await unlink(structuredMessage.imageUrl).catch(() => {});
+            if (structuredMessage.imageUrl) {
+              try {
+                imageUrl = await uploadMedia(structuredMessage.imageUrl);
+                console.log(`  ↳ Image uploaded: ${imageUrl}`);
+              } catch (err: any) {
+                console.error(`  ↳ Image upload failed: ${err.message}`);
+              } finally {
+                await unlink(structuredMessage.imageUrl).catch(() => { });
+              }
             }
-          }
 
-          if (structuredMessage.videoUrl) {
-            try {
-              videoUrl = await uploadMedia(structuredMessage.videoUrl);
-              console.log(`  ↳ Video uploaded: ${videoUrl}`);
-            } catch (err: any) {
-              console.error(`  ↳ Video upload failed: ${err.message}`);
-            } finally {
-              await unlink(structuredMessage.videoUrl).catch(() => {});
+            if (structuredMessage.videoUrl) {
+              try {
+                videoUrl = await uploadMedia(structuredMessage.videoUrl);
+                console.log(`  ↳ Video uploaded: ${videoUrl}`);
+              } catch (err: any) {
+                console.error(`  ↳ Video upload failed: ${err.message}`);
+              } finally {
+                await unlink(structuredMessage.videoUrl).catch(() => { });
+              }
             }
-          }
 
-          // Store event with media URLs in weekly JSON
-          const storedEvent: StoredEvent = { ...eventInfo, imageUrl, videoUrl };
-          try {
-            await storeEvent(storedEvent);
-          } catch (err: any) {
-            console.error(`  ↳ Failed to store event in R2: ${err.message}`);
+            // Store event with raw message and media URLs
+            const storedEvent: StoredEvent = { ...eventInfo, message: structuredMessage.message!, imageUrl, videoUrl };
+            try {
+              await storeEvent(storedEvent);
+            } catch (err: any) {
+              console.error(`  ↳ Failed to store event in R2: ${err.message}`);
+            }
           }
         } else {
           console.log('  ↳ Not an event, skipping.');
