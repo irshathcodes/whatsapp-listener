@@ -34,7 +34,7 @@ async function startListener() {
   const sock = makeWASocket({
     auth: state,
     logger: pino({ level: 'silent' }),
-    browser: Browsers.macOS('Chrome'),
+    browser: Browsers.ubuntu('Chrome'),
     version: [2, 3000, 1033893291],
     getMessage: async () => undefined,
   });
